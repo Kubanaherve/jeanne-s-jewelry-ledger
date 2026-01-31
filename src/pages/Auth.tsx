@@ -5,8 +5,17 @@ import { Input } from "@/components/ui/input";
 import { labels } from "@/lib/kinyarwanda";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Gem, Phone, Lock, UserPlus, LogIn } from "lucide-react";
+import { Gem, Phone, Lock, UserPlus, LogIn, Plus, User, X } from "lucide-react";
+import { PinDialPad } from "@/components/PinDialPad";
 import logo from "@/assets/logo.png";
+
+// Local storage key for remembered accounts
+const ACCOUNTS_STORAGE_KEY = "jfj_remembered_accounts";
+
+interface RememberedAccount {
+  phone: string;
+  displayName: string;
+}
 
 const AuthPage = () => {
   const navigate = useNavigate();
@@ -16,8 +25,28 @@ const AuthPage = () => {
   const [displayName, setDisplayName] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+  
+  // Multiple accounts support
+  const [rememberedAccounts, setRememberedAccounts] = useState<RememberedAccount[]>([]);
+  const [selectedAccount, setSelectedAccount] = useState<RememberedAccount | null>(null);
+  const [showAccountPicker, setShowAccountPicker] = useState(false);
+  const [showFullForm, setShowFullForm] = useState(false);
 
   useEffect(() => {
+    // Load remembered accounts
+    const stored = localStorage.getItem(ACCOUNTS_STORAGE_KEY);
+    if (stored) {
+      try {
+        const accounts = JSON.parse(stored) as RememberedAccount[];
+        setRememberedAccounts(accounts);
+        if (accounts.length > 0) {
+          setShowAccountPicker(true);
+        }
+      } catch {
+        localStorage.removeItem(ACCOUNTS_STORAGE_KEY);
+      }
+    }
+
     // Check if user is already logged in
     const checkAuth = async () => {
       const { data: { session } } = await supabase.auth.getSession();
@@ -40,9 +69,78 @@ const AuthPage = () => {
   }, [navigate]);
 
   const formatPhoneToEmail = (phoneNumber: string): string => {
-    // Convert phone to a fake email for Supabase auth
     const cleanPhone = phoneNumber.replace(/\D/g, '');
     return `${cleanPhone}@phone.local`;
+  };
+
+  const saveAccount = (phoneNum: string, name: string) => {
+    const newAccount: RememberedAccount = { phone: phoneNum, displayName: name };
+    const existing = rememberedAccounts.filter(
+      a => a.phone.replace(/\D/g, '') !== phoneNum.replace(/\D/g, '')
+    );
+    const updated = [...existing, newAccount];
+    localStorage.setItem(ACCOUNTS_STORAGE_KEY, JSON.stringify(updated));
+    setRememberedAccounts(updated);
+  };
+
+  const removeAccount = (phoneNum: string) => {
+    const updated = rememberedAccounts.filter(
+      a => a.phone.replace(/\D/g, '') !== phoneNum.replace(/\D/g, '')
+    );
+    localStorage.setItem(ACCOUNTS_STORAGE_KEY, JSON.stringify(updated));
+    setRememberedAccounts(updated);
+    if (updated.length === 0) {
+      setShowAccountPicker(false);
+      setShowFullForm(false);
+    }
+  };
+
+  const handleSelectAccount = (account: RememberedAccount) => {
+    setSelectedAccount(account);
+  };
+
+  const handleBackToAccounts = () => {
+    setSelectedAccount(null);
+    setIsLoading(false);
+  };
+
+  const handleAddNewAccount = () => {
+    setShowAccountPicker(false);
+    setShowFullForm(true);
+    setSelectedAccount(null);
+  };
+
+  const handleBackToAccountPicker = () => {
+    setShowFullForm(false);
+    setShowAccountPicker(true);
+    setPhone("");
+    setPin("");
+    setDisplayName("");
+  };
+
+  const handlePinLogin = async (enteredPin: string) => {
+    if (!selectedAccount) return;
+
+    setIsLoading(true);
+    try {
+      const email = formatPhoneToEmail(selectedAccount.phone);
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password: enteredPin,
+      });
+
+      if (error) {
+        toast.error("PIN sibyo, ongera ugerageze");
+        setIsLoading(false);
+        return;
+      }
+
+      toast.success(`Murakaza neza, ${selectedAccount.displayName}! 💎`);
+    } catch (error: any) {
+      console.error("Login error:", error);
+      toast.error("Habaye ikosa");
+      setIsLoading(false);
+    }
   };
 
   const handleLogin = async () => {
@@ -51,15 +149,15 @@ const AuthPage = () => {
       return;
     }
 
-    if (pin.length < 4) {
-      toast.error("PIN igomba kuba nibura imibare 4");
+    if (pin.length < 5) {
+      toast.error("PIN igomba kuba nibura imibare 5");
       return;
     }
 
     setIsLoading(true);
     try {
       const email = formatPhoneToEmail(phone);
-      const { error } = await supabase.auth.signInWithPassword({
+      const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password: pin,
       });
@@ -70,14 +168,26 @@ const AuthPage = () => {
         } else {
           toast.error(error.message);
         }
+        setIsLoading(false);
         return;
+      }
+
+      // Get profile for display name
+      if (data.user) {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("display_name")
+          .eq("user_id", data.user.id)
+          .maybeSingle();
+
+        // Save this account
+        saveAccount(phone, profile?.display_name || "User");
       }
 
       toast.success("Murakaza neza! 💎");
     } catch (error: any) {
       console.error("Login error:", error);
       toast.error("Habaye ikosa");
-    } finally {
       setIsLoading(false);
     }
   };
@@ -88,8 +198,8 @@ const AuthPage = () => {
       return;
     }
 
-    if (pin.length < 4) {
-      toast.error("PIN igomba kuba nibura imibare 4");
+    if (pin.length < 5) {
+      toast.error("PIN igomba kuba nibura imibare 5");
       return;
     }
 
@@ -97,7 +207,6 @@ const AuthPage = () => {
     try {
       const email = formatPhoneToEmail(phone);
       
-      // Sign up
       const { data, error } = await supabase.auth.signUp({
         email,
         password: pin,
@@ -112,12 +221,13 @@ const AuthPage = () => {
         } else {
           toast.error(error.message);
         }
+        setIsLoading(false);
         return;
       }
 
       if (data.user) {
         // Create profile
-        const { error: profileError } = await supabase
+        await supabase
           .from("profiles")
           .insert({
             user_id: data.user.id,
@@ -125,16 +235,14 @@ const AuthPage = () => {
             display_name: displayName,
           });
 
-        if (profileError) {
-          console.error("Profile error:", profileError);
-        }
+        // Save this account
+        saveAccount(phone, displayName);
 
         toast.success("Konti yawe yaremewe! 🎉");
       }
     } catch (error: any) {
       console.error("Signup error:", error);
       toast.error("Habaye ikosa");
-    } finally {
       setIsLoading(false);
     }
   };
@@ -147,6 +255,104 @@ const AuthPage = () => {
     );
   }
 
+  // PIN Dial Pad Screen for selected account
+  if (selectedAccount) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-primary via-navy-light to-primary flex flex-col items-center justify-center p-6">
+        {/* Logo */}
+        <div className="text-center mb-8 animate-fade-in">
+          <div className="w-20 h-20 rounded-full bg-white/10 backdrop-blur-sm flex items-center justify-center mx-auto mb-4 shadow-premium">
+            <img src={logo} alt="Logo" className="w-14 h-14 object-contain" />
+          </div>
+          <h1 className="text-xl font-bold text-white mb-1">{labels.appName}</h1>
+        </div>
+
+        {/* PIN Dial Pad */}
+        <div className="animate-fade-in" style={{ animationDelay: '0.1s' }}>
+          <PinDialPad
+            onComplete={handlePinLogin}
+            isLoading={isLoading}
+            displayName={selectedAccount.displayName}
+          />
+        </div>
+
+        {/* Back Button */}
+        <button
+          onClick={handleBackToAccounts}
+          className="mt-8 flex items-center gap-2 text-white/50 text-sm hover:text-white/70 transition-colors animate-fade-in"
+          style={{ animationDelay: '0.2s' }}
+        >
+          ← Subira inyuma
+        </button>
+      </div>
+    );
+  }
+
+  // Account Picker Screen (when multiple accounts are remembered)
+  if (showAccountPicker && rememberedAccounts.length > 0) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-primary via-navy-light to-primary flex flex-col items-center justify-center p-6">
+        {/* Logo */}
+        <div className="text-center mb-8 animate-fade-in">
+          <div className="w-20 h-20 rounded-full bg-white/10 backdrop-blur-sm flex items-center justify-center mx-auto mb-4 shadow-premium">
+            <img src={logo} alt="Logo" className="w-14 h-14 object-contain" />
+          </div>
+          <h1 className="text-xl font-bold text-white mb-1">{labels.appName}</h1>
+          <p className="text-white/60 text-sm">Hitamo konti yawe</p>
+        </div>
+
+        {/* Account List */}
+        <div className="w-full max-w-sm space-y-3 animate-fade-in" style={{ animationDelay: '0.1s' }}>
+          {rememberedAccounts.map((account, index) => (
+            <div
+              key={account.phone}
+              className="relative group"
+            >
+              <button
+                onClick={() => handleSelectAccount(account)}
+                className="w-full glass-card p-4 flex items-center gap-4 hover:bg-white/10 transition-all active:scale-[0.98]"
+              >
+                <div className="w-14 h-14 rounded-full bg-gradient-to-br from-secondary to-gold-light flex items-center justify-center text-xl font-bold text-primary">
+                  {account.displayName.charAt(0).toUpperCase()}
+                </div>
+                <div className="text-left flex-1">
+                  <p className="font-semibold text-foreground text-lg">{account.displayName}</p>
+                  <p className="text-sm text-muted-foreground">{account.phone}</p>
+                </div>
+              </button>
+              {/* Remove account button */}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  removeAccount(account.phone);
+                }}
+                className="absolute top-2 right-2 p-2 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
+                title="Siba konti"
+              >
+                <X size={16} />
+              </button>
+            </div>
+          ))}
+
+          {/* Add Another Account */}
+          <button
+            onClick={handleAddNewAccount}
+            className="w-full glass-card p-4 flex items-center gap-4 hover:bg-white/10 transition-all border-dashed border-2 border-white/20"
+          >
+            <div className="w-14 h-14 rounded-full bg-white/10 flex items-center justify-center">
+              <Plus size={24} className="text-white/70" />
+            </div>
+            <div className="text-left">
+              <p className="font-medium text-foreground">Ongeraho konti</p>
+              <p className="text-sm text-muted-foreground">Iyandikishe cyangwa injira</p>
+            </div>
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Full Login/Signup Form
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary via-navy-light to-primary flex flex-col items-center justify-center p-6">
       {/* Logo & Title */}
@@ -163,6 +369,16 @@ const AuthPage = () => {
 
       {/* Auth Card */}
       <div className="w-full max-w-sm glass-card p-6 animate-fade-in" style={{ animationDelay: '0.1s' }}>
+        {/* Back button if coming from account picker */}
+        {showFullForm && rememberedAccounts.length > 0 && (
+          <button
+            onClick={handleBackToAccountPicker}
+            className="mb-4 text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
+            ← Subira ku makonti
+          </button>
+        )}
+
         {/* Toggle */}
         <div className="flex gap-2 mb-6 p-1 bg-muted rounded-lg">
           <button
@@ -195,7 +411,7 @@ const AuthPage = () => {
               <Input
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
-                placeholder="Urugero: Mama"
+                placeholder="Urugero: Mama cyangwa Papa"
                 className="bg-muted/50 input-glow"
               />
             </div>
@@ -221,7 +437,7 @@ const AuthPage = () => {
           <div>
             <label className="block text-xs font-medium mb-1.5 text-muted-foreground">
               <Lock size={12} className="inline mr-1" />
-              PIN (Imibare 4+)
+              PIN (Imibare 5+)
             </label>
             <Input
               type="password"
