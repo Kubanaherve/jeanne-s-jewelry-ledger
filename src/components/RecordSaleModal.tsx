@@ -46,7 +46,7 @@ export const RecordSaleModal = ({
         item_name: preSelectedItem.item_name,
         quantity: "1",
         cost_price: preSelectedItem.cost_price.toString(),
-        sale_price: "",
+        sale_price: preSelectedItem.selling_price.toString(),
         date_sold: new Date().toISOString().split("T")[0],
       });
       setSelectedInventoryItem(preSelectedItem);
@@ -61,6 +61,7 @@ export const RecordSaleModal = ({
         ...prev,
         item_name: item.item_name,
         cost_price: item.cost_price.toString(),
+        sale_price: item.selling_price.toString(),
       }));
     }
   };
@@ -75,6 +76,7 @@ export const RecordSaleModal = ({
       setForm(prev => ({
         ...prev,
         cost_price: item.cost_price.toString(),
+        sale_price: item.selling_price.toString(),
       }));
     } else {
       setSelectedInventoryItem(null);
@@ -161,7 +163,7 @@ export const RecordSaleModal = ({
             />
             {selectedInventoryItem && (
               <p className="text-[10px] text-muted-foreground mt-1">
-                📦 {selectedInventoryItem.quantity} bisigaye • Cost: {formatCurrency(selectedInventoryItem.cost_price)}
+                📦 {selectedInventoryItem.quantity} bisigaye • Selling: {formatCurrency(selectedInventoryItem.selling_price)} • Cost: {formatCurrency(selectedInventoryItem.cost_price)}
               </p>
             )}
           </div>

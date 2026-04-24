@@ -542,15 +542,15 @@ const DebtsPage = () => {
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-muted to-background">
+    <div className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-slate-100">
 
       {/* ── Header ── */}
-      <header className="sticky top-0 z-50 glass-card rounded-none border-x-0 border-t-0 py-3 px-4">
+      <header className="sticky top-0 z-50 bg-white/90 backdrop-blur-xl border-b border-slate-200 py-3 px-3 sm:px-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <button
               onClick={() => navigate("/dashboard")}
-              className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center"
+              className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 flex items-center justify-center transition-colors"
             >
               <ArrowLeft size={18} />
             </button>
@@ -588,7 +588,7 @@ const DebtsPage = () => {
 
       {/* ── Main list ── */}
       <main
-        className="p-4 max-w-4xl mx-auto space-y-4 overflow-auto"
+        className="p-3 sm:p-4 max-w-4xl mx-auto space-y-4 overflow-auto"
         style={{ maxHeight: "calc(100vh - 80px)" }}
         ref={containerRef}
         onScroll={handleScroll}
@@ -597,11 +597,11 @@ const DebtsPage = () => {
           value={searchQuery}
           onChange={e => setSearchQuery(e.target.value)}
           placeholder={labels.search + "..."}
-          className="pl-3 bg-white/70 input-glow"
+          className="pl-3 bg-white border-slate-200 input-glow"
         />
 
         {/* Total banner */}
-        <div className="glass-card-dark p-4 flex items-center justify-between gold-glow">
+        <div className="bg-slate-900 rounded-2xl p-4 flex items-center justify-between shadow-lg">
           <div>
             <p className="text-xs text-primary-foreground/70">{labels.totalDebt}</p>
             <p className="text-xl font-bold text-primary-foreground">
@@ -636,7 +636,7 @@ const DebtsPage = () => {
             {customers.map(customer => (
               <div
                 key={customer.id}
-                className="p-4 bg-white rounded-lg shadow cursor-pointer hover:shadow-lg transition-shadow"
+                className="p-4 bg-white rounded-xl border border-slate-200 shadow-sm cursor-pointer hover:shadow-md transition-shadow"
                 onClick={() => setSelectedCustomer(customer)}
               >
                 <div className="flex justify-between items-center">

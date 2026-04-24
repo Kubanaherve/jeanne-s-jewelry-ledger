@@ -4,7 +4,6 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { labels, formatCurrency } from "@/lib/kinyarwanda";
 import {
   DAILY_CUSTOMER_PAYMENTS_PREFIX,
-  DAILY_NEW_DEBT_PREFIX, // Ongeraho iyi kugira ngo dufate ideni rishya neza
   getDateKeyFromIso,
 } from "@/lib/reporting";
 import {
@@ -28,7 +27,8 @@ import {
   Save,
   Download,
   Trash2,
-  Bell
+  Bell,
+  RotateCcw
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -48,6 +48,7 @@ interface DashboardStats {
   totalSales: number;
   todaySales: number;
   todayDebt: number;
+  targetMoney: number;
 }
 
 // 🚀 PRO CACHE MEMORY: Yerekana imibare ako kanya 
@@ -60,7 +61,14 @@ const loadCachedStats = (): DashboardStats => {
       console.error("Cache parsing error", e);
     }
   }
-  return { totalUnpaid: 0, totalCustomers: 0, totalSales: 0, todaySales: 0, todayDebt: 0 };
+  return {
+    totalUnpaid: 0,
+    totalCustomers: 0,
+    totalSales: 0,
+    todaySales: 0,
+    todayDebt: 0,
+    targetMoney: 0,
+  };
 };
 
 const DashboardPage = () => {
@@ -72,12 +80,14 @@ const DashboardPage = () => {
 
   const [showCapitalModal, setShowCapitalModal] = useState(false);
   const [showResetMoneyModal, setShowResetMoneyModal] = useState(false);
+  const [showResetSalesModal, setShowResetSalesModal] = useState(false);
   const [showResetModal, setShowResetModal] = useState(false);
   const [showFactoryResetModal, setShowFactoryResetModal] = useState(false);
 
   const [capitalInput, setCapitalInput] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [isResettingMoney, setIsResettingMoney] = useState(false);
+  const [isResettingSales, setIsResettingSales] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
   const [isFactoryResetting, setIsFactoryResetting] = useState(false);
 
@@ -90,15 +100,18 @@ const DashboardPage = () => {
         { data: salesData, error: salesError },
         { data: customers, error: customersError },
         { data: settingsData, error: settingsError },
+        { data: inventoryData, error: inventoryError },
       ] = await Promise.all([
         supabase.from("sales").select("sale_price, quantity, created_at"),
         supabase.from("customers").select("id, name, phone, amount, is_paid, created_at, due_date"),
         supabase.from("app_settings").select("setting_key, setting_value"),
+        supabase.from("inventory_items").select("selling_price, quantity"),
       ]);
 
       if (salesError) throw salesError;
       if (customersError) throw customersError;
       if (settingsError) throw settingsError;
+      if (inventoryError) throw inventoryError;
 
       // 1. Ubucuruzi (Sales Table)
       let salesTotalAllTime = 0;
@@ -142,6 +155,12 @@ const DashboardPage = () => {
         }
       });
 
+      const targetMoney = (inventoryData || []).reduce((sum, item) => {
+        const sellingPrice = Number(item.selling_price) || 0;
+        const quantity = Number(item.quantity) || 0;
+        return sum + sellingPrice * quantity;
+      }, 0);
+
       // 4. Kuvanga imibare
       const newStats = {
         totalUnpaid,
@@ -149,6 +168,7 @@ const DashboardPage = () => {
         totalSales: salesTotalAllTime + totalPaidAllTime,
         todaySales: salesTodayOnly + debtsPaidToday, // Ibyo wacuruje + Ideni ryishyuwe uyu munsi
         todayDebt: newDebtToday, // Ideni watanze uyu munsi
+        targetMoney,
       };
 
       // 🚀 Save state and Update Cache Instantly
@@ -248,6 +268,41 @@ const DashboardPage = () => {
       toast.error("Habaye ikosa");
     } finally {
       setIsResettingMoney(false);
+    }
+  };
+
+  const handleResetSalesStartToday = async () => {
+    setIsResettingSales(true);
+    try {
+      // Reset all recorded sales money, preserve unpaid customer debts/history
+      await supabase.from("sales").delete();
+      await supabase.from("app_settings").update({ setting_value: "0" }).eq("setting_key", "total_paid");
+
+      const { data: paymentRows, error: paymentRowsError } = await supabase
+        .from("app_settings")
+        .select("setting_key")
+        .like("setting_key", `${DAILY_CUSTOMER_PAYMENTS_PREFIX}%`);
+
+      if (paymentRowsError) throw paymentRowsError;
+
+      const paymentKeys = (paymentRows || []).map((row) => row.setting_key);
+      if (paymentKeys.length > 0) {
+        const { error: deleteDailyPaymentsError } = await supabase
+          .from("app_settings")
+          .delete()
+          .in("setting_key", paymentKeys);
+        if (deleteDailyPaymentsError) throw deleteDailyPaymentsError;
+      }
+
+      toast.success("Sales money yasubijwe kuri 0. Amadeni atarishyurwa yagumyeho ✨");
+      setShowResetSalesModal(false);
+      fetchStats();
+      window.dispatchEvent(new CustomEvent("paymentMade"));
+    } catch (error) {
+      console.error("Reset sales error:", error);
+      toast.error("Habaye ikosa mu gusubiza sales kuri 0");
+    } finally {
+      setIsResettingSales(false);
     }
   };
 
@@ -385,18 +440,26 @@ const DashboardPage = () => {
           <div className="absolute inset-0 bg-gradient-to-r from-pink-500/20 via-purple-500/20 to-indigo-500/20 animate-gradient-x" />
           <div className="relative z-10 flex items-center justify-between">
             <div className="flex-1">
-              <p className="text-xs text-primary-foreground/70">Intego Yawe 💎</p>
-              <p className="text-lg font-semibold text-white">RWF 15,930,050</p>
+              <p className="text-xs text-primary-foreground/70">Intego y'ibicuruzwa biri muri stock 💎</p>
+              <p className="text-lg font-semibold text-white">{formatCurrency(stats.targetMoney)}</p>
               <div className="mt-3">
                 <div className="w-full h-3 bg-white/10 rounded-full overflow-hidden">
                   <div
                     className="h-full bg-gradient-to-r from-pink-400 to-purple-400 transition-all duration-1000 ease-out"
-                    style={{ width: `${Math.min((stats.totalSales / 15930050) * 100, 100)}%` }}
+                    style={{
+                      width: `${
+                        stats.targetMoney > 0
+                          ? Math.min((stats.totalSales / stats.targetMoney) * 100, 100)
+                          : 0
+                      }%`,
+                    }}
                   />
                 </div>
                 <div className="flex justify-between mt-2 text-[10px] text-white/70">
-                  <span>{((stats.totalSales / 15930050) * 100).toFixed(1)}%</span>
-                  <span>Hasigaye {formatCurrency(Math.max(15930050 - stats.totalSales, 0))}</span>
+                  <span>
+                    {stats.targetMoney > 0 ? ((stats.totalSales / stats.targetMoney) * 100).toFixed(1) : "0.0"}%
+                  </span>
+                  <span>Hasigaye {formatCurrency(Math.max(stats.targetMoney - stats.totalSales, 0))}</span>
                 </div>
               </div>
               <p className="text-[10px] text-primary-foreground/50 mt-2">
@@ -428,6 +491,10 @@ const DashboardPage = () => {
 
           <Button onClick={() => setShowResetMoneyModal(true)} variant="outline" className="w-full border-warning/50 text-warning hover:bg-warning/10">
             <DollarSign size={16} className="mr-2" /> Siba amafaranga yinjijwe (Reset Money)
+          </Button>
+
+          <Button onClick={() => setShowResetSalesModal(true)} variant="outline" className="w-full border-amber-500/50 text-amber-700 hover:bg-amber-50">
+            <RotateCcw size={16} className="mr-2" /> Tangira Sales Bundi Bushya (Keep Unpaid Debts)
           </Button>
 
           <Button onClick={() => setShowResetModal(true)} variant="outline" className="w-full border-destructive/50 text-destructive hover:bg-destructive/10">
@@ -494,6 +561,24 @@ const DashboardPage = () => {
           <div className="flex gap-2">
             <Button onClick={handleResetMoney} disabled={isResettingMoney} variant="destructive" className="flex-1">{isResettingMoney ? "Processing..." : "Yes, reset"}</Button>
             <Button onClick={() => setShowResetMoneyModal(false)} variant="outline" className="flex-1">Cancel</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Reset All Modal */}
+      <Dialog open={showResetSalesModal} onOpenChange={setShowResetSalesModal}>
+        <DialogContent className="max-w-sm mx-4 rounded-2xl space-y-4">
+          <DialogHeader>
+            <DialogTitle className="text-base">Tangira sales bushya kuva uyu munsi</DialogTitle>
+          </DialogHeader>
+          <p className="text-[12px] text-muted-foreground">
+            Ibi bizasiba amafaranga yose ya sales (sales table + total paid), ariko amadeni atarishyurwa azaguma muri history.
+          </p>
+          <div className="flex gap-2">
+            <Button onClick={handleResetSalesStartToday} disabled={isResettingSales} variant="destructive" className="flex-1">
+              {isResettingSales ? "Processing..." : "Yes, reset sales"}
+            </Button>
+            <Button onClick={() => setShowResetSalesModal(false)} variant="outline" className="flex-1">Cancel</Button>
           </div>
         </DialogContent>
       </Dialog>

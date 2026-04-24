@@ -5,7 +5,11 @@ export interface InventoryItem {
   id: string;
   item_name: string;
   quantity: number;
+  selling_price: number;
   cost_price: number;
+  created_at: string;
+  date_bought: string;
+  notes: string | null;
 }
 
 export const useInventorySuggestions = () => {
@@ -16,7 +20,7 @@ export const useInventorySuggestions = () => {
     setIsLoading(true);
     const { data, error } = await supabase
       .from("inventory_items")
-      .select("id, item_name, quantity, cost_price")
+      .select("id, item_name, quantity, selling_price, cost_price, created_at, date_bought, notes")
       .gt("quantity", 0)
       .order("item_name", { ascending: true });
 

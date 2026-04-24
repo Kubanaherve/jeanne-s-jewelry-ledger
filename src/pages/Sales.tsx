@@ -8,9 +8,15 @@ import {
   getDateKeyFromIso,
   isDateInFilter,
 } from "@/lib/reporting";
-import { ArrowLeft, Calendar, Download, TrendingUp } from "lucide-react";
+import { ArrowLeft, Calendar, Download, TrendingUp, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 type FilterOption = "today" | "week" | "month" | "all";
 
@@ -72,6 +78,8 @@ const ReportsPage = () => {
     expectedTotal: 0,
   });
   const [filter, setFilter] = useState<FilterOption>("all");
+  const [showClearHistoryModal, setShowClearHistoryModal] = useState(false);
+  const [isClearingHistory, setIsClearingHistory] = useState(false);
 
   const fetchReports = useCallback(async () => {
     setLoading(true);
@@ -223,6 +231,43 @@ const ReportsPage = () => {
   const isToday = (dateStr: string) =>
     dateStr === getDateKeyFromIso(new Date().toISOString());
 
+  const handleClearSalesReportHistory = async () => {
+    setIsClearingHistory(true);
+    try {
+      await supabase.from("sales").delete();
+
+      const { data: keysData, error: fetchKeysError } = await supabase
+        .from("app_settings")
+        .select("setting_key")
+        .or(
+          `setting_key.like.${DAILY_CUSTOMER_PAYMENTS_PREFIX}%,setting_key.like.${DAILY_NEW_DEBT_PREFIX}%`
+        );
+
+      if (fetchKeysError) throw fetchKeysError;
+
+      const keysToDelete = (keysData || []).map((row) => row.setting_key);
+      if (keysToDelete.length > 0) {
+        const { error: deleteKeysError } = await supabase
+          .from("app_settings")
+          .delete()
+          .in("setting_key", keysToDelete);
+        if (deleteKeysError) throw deleteKeysError;
+      }
+
+      await supabase.from("app_settings").update({ setting_value: "0" }).eq("setting_key", "total_paid");
+
+      setShowClearHistoryModal(false);
+      toast.success("Sales report history yasibwe, watangiye bushya ✨");
+      fetchReports();
+      window.dispatchEvent(new CustomEvent("paymentMade"));
+    } catch (error) {
+      console.error("Clear report history error:", error);
+      toast.error("Habaye ikosa mu gusiba report history");
+    } finally {
+      setIsClearingHistory(false);
+    }
+  };
+
   const filterTitle = {
     today: "Raporo y'uyu munsi",
     week: "Raporo y'iki cyumweru",
@@ -231,28 +276,39 @@ const ReportsPage = () => {
   }[filter];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-muted to-background">
-      <header className="sticky top-0 z-50 glass-card rounded-none border-x-0 border-t-0 py-3 px-4 flex items-center justify-between">
+    <div className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-slate-100">
+      <header className="sticky top-0 z-50 bg-white/90 backdrop-blur-xl border-b border-slate-200 py-3 px-3 sm:px-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <button
             onClick={() => navigate("/dashboard")}
-            className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center"
+            className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 flex items-center justify-center transition-colors"
           >
             <ArrowLeft size={18} />
           </button>
           <h1 className="text-base font-bold">Raporo y'Amafaranga</h1>
         </div>
-        <Button
-          onClick={downloadCSV}
-          size="sm"
-          className="btn-navy h-8 px-3 text-xs gap-1"
-        >
-          <Download size={14} />
-          CSV
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            onClick={() => setShowClearHistoryModal(true)}
+            size="sm"
+            variant="outline"
+            className="h-8 px-2.5 text-xs gap-1 border-red-300 text-red-700 hover:bg-red-50"
+          >
+            <Trash2 size={13} />
+            Reset
+          </Button>
+          <Button
+            onClick={downloadCSV}
+            size="sm"
+            className="h-8 px-3 text-xs gap-1 bg-primary hover:bg-primary/90"
+          >
+            <Download size={14} />
+            CSV
+          </Button>
+        </div>
       </header>
 
-      <main className="p-4 max-w-lg mx-auto space-y-4">
+      <main className="p-3 sm:p-4 max-w-md mx-auto space-y-4">
         <div className="space-y-1">
           <h2 className="text-sm font-semibold text-foreground">{filterTitle}</h2>
           <p className="text-xs text-muted-foreground">
@@ -274,14 +330,14 @@ const ReportsPage = () => {
           ))}
         </div>
 
-        <div className="glass-card-dark p-4 gold-glow">
+        <div className="bg-slate-900 rounded-2xl p-4 shadow-lg">
           <div className="flex items-center gap-2 mb-1">
             <TrendingUp size={16} className="text-secondary" />
             <span className="text-xs text-primary-foreground/70">
               Igiteranyo Gitegerejwe
             </span>
           </div>
-          <p className="text-2xl font-bold text-white">
+          <p className="text-xl sm:text-2xl font-bold text-white">
             {formatCurrency(summary.expectedTotal)}
           </p>
           <p className="text-[10px] text-primary-foreground/50 mt-1">
@@ -290,21 +346,21 @@ const ReportsPage = () => {
         </div>
 
         <div className="grid grid-cols-3 gap-3">
-          <div className="glass-card p-3">
+          <div className="bg-white rounded-xl border border-slate-200 p-3 shadow-sm">
             <p className="text-[10px] text-muted-foreground">Amafaranga yinjijwe</p>
             <p className="text-sm font-bold text-green-700">
               {formatCurrency(summary.receivedTotal)}
             </p>
           </div>
 
-          <div className="glass-card p-3">
+          <div className="bg-white rounded-xl border border-slate-200 p-3 shadow-sm">
             <p className="text-[10px] text-muted-foreground">Ideni ritarishyurwa</p>
             <p className="text-sm font-bold text-red-700">
               {formatCurrency(summary.unpaidDebt)}
             </p>
           </div>
 
-          <div className="glass-card p-3">
+          <div className="bg-white rounded-xl border border-slate-200 p-3 shadow-sm">
             <p className="text-[10px] text-muted-foreground">Igiteranyo cyose</p>
             <p className="text-sm font-bold text-blue-700">
               {formatCurrency(summary.expectedTotal)}
@@ -325,8 +381,8 @@ const ReportsPage = () => {
             {reports.map((report) => (
               <div
                 key={report.date}
-                className={`glass-card p-4 space-y-3 ${
-                  isToday(report.date) ? "border-2 border-green-400/60" : ""
+                className={`bg-white rounded-2xl border p-4 space-y-3 shadow-sm ${
+                  isToday(report.date) ? "border-green-400/60" : "border-slate-200"
                 }`}
               >
                 <div className="flex items-center justify-between">
@@ -342,7 +398,7 @@ const ReportsPage = () => {
                     </span>
                   </div>
 
-                  <span className="text-sm font-bold text-blue-600">
+                  <span className="text-sm font-bold text-blue-700">
                     {formatCurrency(report.expectedTotal)}
                   </span>
                 </div>
@@ -380,6 +436,34 @@ const ReportsPage = () => {
           </div>
         )}
       </main>
+
+      <Dialog open={showClearHistoryModal} onOpenChange={setShowClearHistoryModal}>
+        <DialogContent className="max-w-sm mx-4 rounded-2xl space-y-4">
+          <DialogHeader>
+            <DialogTitle className="text-base">Siba sales report history</DialogTitle>
+          </DialogHeader>
+          <p className="text-[12px] text-muted-foreground">
+            Ibi bizasiba amateka ya sales/report (sales + daily report keys) kugirango utangire bushya.
+          </p>
+          <div className="flex gap-2">
+            <Button
+              onClick={handleClearSalesReportHistory}
+              disabled={isClearingHistory}
+              variant="destructive"
+              className="flex-1"
+            >
+              {isClearingHistory ? "Processing..." : "Yes, clear history"}
+            </Button>
+            <Button
+              onClick={() => setShowClearHistoryModal(false)}
+              variant="outline"
+              className="flex-1"
+            >
+              Cancel
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

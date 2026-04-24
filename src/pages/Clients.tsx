@@ -6,8 +6,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { labels } from "@/lib/kinyarwanda";
-
 interface Client {
   id: string;
   name: string;
@@ -111,13 +109,13 @@ const ClientsPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-muted to-background">
+    <div className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-slate-100">
       {/* Header */}
-      <header className="sticky top-0 z-50 glass-card rounded-none border-x-0 border-t-0 py-3 px-4">
+      <header className="sticky top-0 z-50 bg-white/90 backdrop-blur-xl border-b border-slate-200 py-3 px-3 sm:px-4">
         <div className="flex items-center gap-3">
           <button
             onClick={() => navigate("/dashboard")}
-            className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center"
+            className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 flex items-center justify-center transition-colors"
           >
             <ArrowLeft size={18} />
           </button>
@@ -130,9 +128,9 @@ const ClientsPage = () => {
         </div>
       </header>
 
-      <main className="p-4 pb-8 space-y-6 max-w-lg mx-auto">
+      <main className="p-3 sm:p-4 pb-8 space-y-6 max-w-md mx-auto">
         {/* Add Client Form */}
-        <div className="glass-card p-5 animate-fade-in">
+        <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 animate-fade-in shadow-sm">
           <h2 className="text-sm font-semibold mb-4 flex items-center gap-2">
             <UserPlus size={18} className="text-primary" />
             Ongeraho Umukiriya
@@ -149,7 +147,7 @@ const ClientsPage = () => {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="Andika izina..."
-                className="bg-white/50 input-glow text-base h-12"
+                className="bg-white border-slate-200 input-glow text-base h-11"
                 autoComplete="off"
               />
             </div>
@@ -165,7 +163,7 @@ const ClientsPage = () => {
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
                 placeholder="07X XXX XXXX"
-                className="bg-white/50 input-glow text-base h-12"
+                className="bg-white border-slate-200 input-glow text-base h-11"
                 inputMode="tel"
                 autoComplete="off"
               />
@@ -174,7 +172,7 @@ const ClientsPage = () => {
             <Button
               onClick={handleSave}
               disabled={isSaving || !name.trim()}
-              className="w-full h-12 text-base btn-gold"
+              className="w-full h-11 text-base bg-primary hover:bg-primary/90"
             >
               {isSaving ? (
                 <div className="w-5 h-5 border-2 border-foreground/30 border-t-foreground rounded-full animate-spin" />
@@ -199,7 +197,7 @@ const ClientsPage = () => {
               <div className="w-8 h-8 border-2 border-primary/30 border-t-primary rounded-full animate-spin mx-auto" />
             </div>
           ) : clients.length === 0 ? (
-            <div className="glass-card p-8 text-center">
+            <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center shadow-sm">
               <User size={32} className="mx-auto mb-3 text-muted-foreground/50" />
               <p className="text-sm text-muted-foreground">Nta mukiriya uhari</p>
               <p className="text-xs text-muted-foreground/70 mt-1">
@@ -211,7 +209,7 @@ const ClientsPage = () => {
               {clients.map((client) => (
                 <div
                   key={client.id}
-                  className="glass-card p-4 flex items-center justify-between animate-fade-in"
+                  className="bg-white border border-slate-200 rounded-xl p-3.5 flex items-center justify-between animate-fade-in shadow-sm"
                 >
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
